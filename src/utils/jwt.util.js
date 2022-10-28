@@ -16,15 +16,15 @@ const whitelist = [
 ];
 
 const isUserLoggedIn = async userId => {
-    const result = client.execute(`SELECT id FROM tokens WHERE id = ?`, [userId]);
-    console.log(result);
+    const {_rows: rows} = client.execute(`SELECT id FROM tokens WHERE id = ?`, [userId]);
+    const rowLength = rows.length;
     return rowLength > 0;
 };
 
 const loginUser = async (userId, token) => {
     const QUERY = `INSERT INTO tokens (id, tkn) VALUES (?, ?)`;
     const VALUES = [userId, token];
-    await client.execute(QUERY, VALUES);
+    client.execute(QUERY, VALUES);
 };
 
 const removeUser = async userId => {
@@ -32,7 +32,7 @@ const removeUser = async userId => {
         if (!userId || !userId.length) return;
         const QUERY = `DELETE FROM tokens WHERE id = ?`;
         const VALUES = [userId];
-        await client.execute(QUERY, VALUES);
+        client.execute(QUERY, VALUES);
     } catch (err) {
         console.log(err);
     }
@@ -68,7 +68,8 @@ const verifyUser = async (req, res, next) => {
         const { id } = jwt.verify(token, process.env.JWT_SECRET);
         const QUERY = `SELECT tkn FROM tokens WHERE id = ?`;
         const VALUES = [id];
-        const { rows, rowLength } = await client.execute(QUERY, VALUES);
+        const { _rows: rows } = client.execute(QUERY, VALUES);
+        const rowLength = rows.length;
         if (!isUserLoggedIn(id) || !rowLength || rows[0].tkn != token)
             throw new Error("Not valid");
         req.userId = id;
