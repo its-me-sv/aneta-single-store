@@ -4,17 +4,17 @@ require("dotenv").config();
 // custom
 require("./src/utils/single-store.util");
 const { app, io, httpServer } = require('./src/utils/server.util');
-// const combineRoutes = require('./src/routes');
-// const combineMiddlewares = require('./src/utils/middleware.util');
+const combineRoutes = require('./src/routes');
+const combineMiddlewares = require('./src/utils/middleware.util');
 const socketHandler = require('./src/utils/socket.util');
 
-// //middlewares
-// combineMiddlewares(app);
+//middlewares
+combineMiddlewares(app);
 
-// //routes
-// combineRoutes(app);
+//routes
+combineRoutes(app);
 
-// //socket
+//socket
 socketHandler(io);
 
 // port declaration & server spin up
