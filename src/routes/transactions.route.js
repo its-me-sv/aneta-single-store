@@ -23,7 +23,7 @@ router.post(`/new`, async (req, res) => {
         VALUES (now(), ?, ?, ?);
         `;
         const VALUE = [orgName, empEmail, amount];
-        await client.execute(QUERY, VALUE, {prepare: true});
+        client.execute(QUERY, VALUE);
         return res.status(200).json("Transaction made successfully");
     } catch (err) {
         return res.status(500).json(err);
@@ -36,25 +36,21 @@ router.post(`/fetch`, async (req, res) => {
         const {orgName, page, recipient} = req.body;
         let QUERY = `
         SELECT id, amount, recipient 
-        FROM transactions WHERE organisation = ?;`;
+        FROM transactions WHERE organisation = ?`;
         let VALUE = [orgName];
         if (recipient?.length > 0) {
-            QUERY = `
-            SELECT id, amount, recipient FROM transactions 
-            WHERE organisation = ? AND recipient = ?;`;
-            VALUE = [orgName, recipient];
+            QUERY += " AND recipient = ?";
+            VALUE.push(recipient);
         }
-        const queryOptions = {
-            prepare: true,
-            fetchSize: 10
-        };
-        if (page?.length > 0) queryOptions.pageState = page;
-        if (recipient?.length > 0) {
-            delete queryOptions.pageState;
-            delete queryOptions.fetchSize;
+        if (page?.length > 0 && !recipient?.length) {
+            QUERY += " AND id < ?";
+            VALUE.push(page);
         }
-        const {rows, pageState} = await client.execute(QUERY, VALUE, {...queryOptions});
-        return res.status(200).json({transactions: rows, pageState});
+        QUERY += " ORDER BY id DESC LIMIT 10;"
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            return res.status(200).json({transactions: rows, pageState: rows.slice(-1)[0].id});
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -68,23 +64,35 @@ router.post(`/stats`, async (req, res) => {
         SELECT count(id) AS count FROM transactions WHERE organisation = ?;
         `;
         let VALUE = [orgName];
-        const transactions = (await client.execute(QUERY, VALUE)).rows[0].count;
-        QUERY = `
-        SELECT sum(amount) AS count FROM transactions WHERE organisation = ?;
-        `;
-        VALUE = [orgName];
-        const total = (await client.execute(QUERY, VALUE)).rows[0].count;
-        const todayDate = getDate(new Date());
-        QUERY = `
-        SELECT sum(amount) AS count FROM transactions 
-        WHERE organisation = ? AND id > maxTimeuuid(?);
-        `;
-        VALUE = [orgName, todayDate];
-        const today = (await client.execute(QUERY, VALUE, {prepare: true})).rows[0].count;
-        const tenDaysAgoDate = getDate(new Date(Date.now() - 864000000));
-        VALUE = [orgName, tenDaysAgoDate];
-        const tenDays = (await client.execute(QUERY, VALUE, {prepare: true})).rows[0].count;
-        return res.status(200).json({today, total, transactions, tenDays});
+        client.execute(QUERY, VALUE, (err, trnxs) => {
+            if (err) throw err;
+            const transactions = trnxs[0].count;
+            QUERY = `
+            SELECT sum(amount) AS count FROM transactions WHERE organisation = ?;
+            `;
+            VALUE = [orgName];
+            client.execute(QUERY, VALUE, (err1, totals) => {
+                if (err1) throw err1;
+                const total = totals[0].count;
+                const todayDate = getDate(new Date());
+                QUERY = `
+                SELECT sum(amount) AS count FROM transactions 
+                WHERE organisation = ? AND id > maxTimeuuid(?);
+                `;
+                VALUE = [orgName, todayDate];
+                client.execute(QUERY, VALUE, (err2, todays) => {
+                    if (err2) throw err2;
+                    const today = todays[0].count;
+                    const tenDaysAgoDate = getDate(new Date(Date.now() - 864000000));
+                    VALUE = [orgName, tenDaysAgoDate];
+                    client.execute(QUERY, VALUE, (err3, multiDays) => {
+                        if (err3) throw err3;
+                        const tenDays = multiDays[0].count;
+                        return res.status(200).json({today, total, transactions, tenDays});
+                    });
+                });
+            });
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
