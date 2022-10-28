@@ -40,16 +40,18 @@ router.post(`/fetch`, async (req, res) => {
         const {status} = req.query;
         let QUERY = `
         SELECT id, name, description FROM projects
-        WHERE organisation = ? AND status = ?;
+        WHERE organisation = ? AND status = ?
         `;
         let VALUE = [orgName, +status];
-        const queryOptions = {
-          prepare: true,
-          fetchSize: 4
-        };
-        if (page?.length > 0) queryOptions.pageState = page;
-        const {rows, pageState} = await client.execute(QUERY, VALUE, {...queryOptions});
-        return res.status(200).json({ projects: rows, pageState });
+        if (page?.length > 0) {
+            QUERY += " AND id < ?";
+            VALUE.push(page);
+        }
+        QUERY += " ORDER BY id DESC LIMIT 4;";
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            return res.status(200).json({projects: rows, pageState: rows.slice(-1)[0].id});
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -64,9 +66,12 @@ router.post(`/find`, async (req, res) => {
         WHERE organisation = ? AND name = ?;
         `;
         const VALUE = [orgName, projName];
-        const {rows, rowLength} = await client.execute(QUERY, VALUE);
-        if (rowLength < 1) return res.status(400).json("Couldn't find project");
-        return res.status(200).json(rows[0]);
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            const rowLength = rows.length;
+            if (rowLength < 1) return res.status(400).json("Couldn't find project");
+            return res.status(200).json(rows[0]);
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -80,9 +85,12 @@ router.post(`/overview`, async (req, res) => {
         SELECT name, description, status, resources
         FROM projects WHERE id = ?;`;
         const VALUE = [id];
-        const {rows, rowLength} = await client.execute(QUERY, VALUE);
-        if (!rowLength) return res.status(400).json("Not found");
-        return res.status(200).json(rows[0]||{});
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            const rowLength = rows.length;
+            if (!rowLength) return res.status(400).json("Not found");
+            return res.status(200).json(rows[0]||{});
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -97,7 +105,7 @@ router.put(`/set-status`, async (req, res) => {
         WHERE organisation = ? AND name = ?;
         `;
         const VALUE = [status, orgName, projName];
-        await client.execute(QUERY, VALUE, {prepare: true});
+        client.execute(QUERY, VALUE);
         return res.status(200).json("Project Status Updated");
     } catch (err) {
         return res.status(500).json(err);
@@ -113,7 +121,7 @@ router.put(`/set-desc`, async (req, res) => {
         WHERE organisation = ? AND name = ?;
         `;
         const VALUE = [desc, orgName, projName];
-        await client.execute(QUERY, VALUE);
+        client.execute(QUERY, VALUE);
         return res.status(200).json("Project Description Updated");
     } catch (err) {
         return res.status(500).json(err);
@@ -130,24 +138,49 @@ router.put(`/add-emp`, async (req, res) => {
         WHERE organisation = ? AND email = ?;
         `;
         let VALUE = [orgName, email];
-        const {rows, rowLength} = await client.execute(QUERY, VALUE);
-        if (!rowLength) return res.status(400).json("Resource not found");
-        const empId = String(rows[0].id);
-        // add emp id to project's rescources
-        QUERY = `
-        UPDATE projects SET resources = resources + ?
-        WHERE organisation = ? AND name = ?;
-        `;
-        VALUE = [[empId], orgName, projName];
-        await client.execute(QUERY, VALUE, {prepare: true});
-        // add project name to employer's projects
-        QUERY = `
-        UPDATE employee SET projects = projects + ?
-        WHERE organisation = ? AND email = ?;
-        `;
-        VALUE = [[projName], orgName, email];
-        await client.execute(QUERY, VALUE, {prepare: true});
-        return res.status(200).json({id: empId});
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            const rowLength = rows.length;
+            if (!rowLength) throw new Error("Resource not found");
+            const empId = String(rows[0].id);
+            // fetch project's resources
+            QUERY = `
+              SELECT resources FROM projects
+              WHERE organisation = ? AND name = ?;
+            `;
+            VALUE = [orgName, projName];
+            client.execute(QUERY, VALUE, (err1, projects) => {
+                if (err1) throw err;
+                let project = projects[0].resources;
+                project = {resources: [...project.resources, empId]};
+                // add emp id to project's rescources
+                QUERY = `
+                UPDATE projects SET resources = ?
+                WHERE organisation = ? AND name = ?;
+                `;
+                VALUE = [project, orgName, projName];
+                client.execute(QUERY, VALUE);
+                // fetch employer's projects
+                QUERY = `
+                  SELECT projects FROM employee
+                  WHERE organisation = ? AND email = ?;
+                `;
+                VALUE = [orgName, email];
+                client.execute(QUERY, VALUE, (err2, empProj) => {
+                    if (err2) throw err2;
+                    let emp = empProj[0].projects;
+                    emp = {projects: [...emp.projects, projName]};
+                    // add project name to employer's projects
+                    QUERY = `
+                    UPDATE employee SET projects = ?
+                    WHERE organisation = ? AND email = ?;
+                    `;
+                    const VALUE = [emp, orgName, email];
+                    client.execute(QUERY, VALUE);
+                    return res.status(200).json({id: empId});
+                });
+            });
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -157,21 +190,43 @@ router.put(`/add-emp`, async (req, res) => {
 router.put(`/rem-emp`, async (req, res) => {
     try {
         const {orgName, email, projName, empId} = req.body;
-        // remove emp id from project's rescources
+        // selecting project resources
         let QUERY = `
-        UPDATE projects SET resources = resources - ?
+        SELECT resources FROM projects
         WHERE organisation = ? AND name = ?;
         `;
-        let VALUE = [[empId], orgName, projName];
-        await client.execute(QUERY, VALUE, {prepare: true});
-        // remove project name from employer's projects
-        QUERY = `
-        UPDATE employee SET projects = projects - ?
-        WHERE organisation = ? AND email = ?;
-        `;
-        VALUE = [[projName], orgName, email];
-        await client.execute(QUERY, VALUE, {prepare: true});
-        return res.status(200).json("Resource removed successfully");
+        let VALUE = [orgName, projName];
+        client.execute(QUERY, VALUE, (err, projects) => {
+            if (err) throw err;
+            let project = projects[0].resources;
+            project = { resources: project.resources.filter(val => val !== empId) };
+            // remove emp id from project's rescources
+            QUERY = `
+            UPDATE projects SET resources = ?
+            WHERE organisation = ? AND name = ?;
+            `;
+            VALUE = [project, orgName, projName];
+            client.execute(QUERY, VALUE);
+            // selecting employer's projects
+            QUERY = `
+            SELECT projects FROM employee
+            WHERE organisation = ? AND email = ?;
+            `;
+            VALUE = [orgName, email];
+            client.execute(QUERY, VALUE, (err1, empProj) => {
+                if (err1) throw err1;
+                let emp = empProj[0].projects;
+                emp = { projects: emp.projects.filter(val => val !== projName) };
+                // remove project name from employer's projects
+                QUERY = `
+                UPDATE employee SET projects = ?
+                WHERE organisation = ? AND email = ?;
+                `;
+                VALUE = [emp, orgName, email];
+                client.execute(QUERY, VALUE);
+                return res.status(200).json("Resource removed successfully");
+            });
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -183,15 +238,17 @@ router.post(`/stats`, async (req, res) => {
         const {orgName} = req.body;
         let stats = ['Stalled', 'Active', 'Completed'];
         let resBody = {};
-        let QUERY, VALUE, result;
+        let QUERY, VALUE;
         for (let status in stats) {
             QUERY = `
             SELECT count(id) as count FROM projects 
             WHERE organisation = ? AND status = ?;
             `;
             VALUE = [orgName, status];
-            result = (await client.execute(QUERY, VALUE, {prepare: true})).rows[0].count;
-            resBody[stats[status]] = result;
+            client.execute(QUERY, VALUE, (err, rows) => {
+                if (err) throw err;
+                resBody[stats[status]] = rows[0].count;
+            });
         }
         return res.status(200).json(resBody);
     } catch (err) {
