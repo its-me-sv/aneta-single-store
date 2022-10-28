@@ -13,22 +13,23 @@ router.post(`/create`, async (req, res) => {
         // checking if organisation name already taken
         let QUERY = `SELECT id FROM organisations WHERE name = ?;`;
         let VALUES = [orgName];
-        const {rowLength} = await client.execute(QUERY, VALUES);
-        if (rowLength) return res.status(400).json("Organisation name taken");
-
-        // hashing password
-        const salt = await bcrypt.genSalt(+process.env.SALT);
-        const hashedPassword = await bcrypt.hash(password, salt);
-
-        // inserting the record
-        QUERY = `
-          INSERT INTO organisations 
-          (name, creator_name, email, id, password_hash, profile_picture, status)
-          VALUES (?, ?, ?, now(6), ?, '', 0);
-        `;
-        VALUES = [orgName, creator, email, hashedPassword];
-        await client.execute(QUERY, VALUES);
-        return res.status(200).json("Account created successfully");
+        client.execute(QUERY, VALUES, async (err, rows) => {
+            if (err) throw err;
+            const rowLength = rows.length;
+            if (rowLength) return res.status(400).json("Organisation name taken");
+            // hashing password
+            const salt = await bcrypt.genSalt(+process.env.SALT);
+            const hashedPassword = await bcrypt.hash(password, salt);
+            // inserting the record
+            QUERY = `
+              INSERT INTO organisations 
+              (name, creator_name, email, id, password_hash, profile_picture, status)
+              VALUES (?, ?, ?, now(6), ?, '', 0);
+            `;
+            VALUES = [orgName, creator, email, hashedPassword];
+            client.execute(QUERY, VALUES);
+            return res.status(200).json("Account created successfully");
+        });
     } catch (err) {
         console.log(err);
         return res.status(500).json("Error while creating account");
@@ -44,14 +45,16 @@ router.post(`/tiny-info`, async (req, res) => {
         WHERE name = ?;
         `;
         const VALUES = [orgName];
-        const {rows} = await client.execute(QUERY, VALUES);
-        if (!rows[0]) return res.status(400).json("Not found");
-        const responseBody = {
-          name: rows[0].creator_name,
-          email: rows[0].email,
-          profilePicture: rows[0].profile_picture
-        };
-        return res.status(200).json(responseBody);
+        client.execute(QUERY, VALUES, (err, rows) => {
+            if (err) throw err;
+            if (!rows[0]) return res.status(400).json("Not found");
+            const responseBody = {
+              name: rows[0].creator_name,
+              email: rows[0].email,
+              profilePicture: rows[0].profile_picture
+            };
+            return res.status(200).json(responseBody);
+        });
     } catch (err) {
         console.log(err);
         return res.status(500).json(err);
@@ -74,13 +77,13 @@ router.put(`/update`, async (req, res) => {
         WHERE name = ?;
         `;
         const VALUES = [creator_name, email, profile_picture, orgName];
-        await client.execute(QUERY, VALUES);
+        client.execute(QUERY, VALUES);
         if (password?.length > 0) {
             const salt = await bcrypt.genSalt(+process.env.SALT);
             const hashedPassword = await bcrypt.hash(password, salt);
             const QUERY1 = `UPDATE organisations SET password_hash = ? WHERE name = ?;`;
             const VALUES1 = [hashedPassword, orgName];
-            await client.execute(QUERY1, VALUES1);
+            client.execute(QUERY1, VALUES1);
         }
         return res.status(200).json("OK");
     } catch (err) {
@@ -94,9 +97,12 @@ router.post(`/info`, async (req, res) => {
         const {oid} = req.body;
         const QUERY = `SELECT creator_name, email, status, profile_picture FROM organisations WHERE id = ?;`;
         const VALUES = [oid];
-        const {rows, rowLength} = await client.execute(QUERY, VALUES);
-        if (!rowLength) return res.status(400).json("Not found");
-        return res.status(200).json(rows[0]);
+        client.execute(QUERY, VALUES, (err, rows) => {
+            if (err) throw err;
+            const rowLength = rows.length;
+            if (!rowLength) return res.status(400).json("Not found");
+            return res.status(200).json(rows[0]);
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -108,7 +114,7 @@ router.put(`/set-status`, async (req, res) => {
         const {status, orgName} = req.body;
         const QUERY = `UPDATE organisations SET status = ? WHERE name = ?;`;
         const VALUES = [status, orgName];
-        await client.execute(QUERY, VALUES, {prepare: true});
+        client.execute(QUERY, VALUES);
         return res.status(200).json("Updated successfully");
     } catch (err) {
         return res.status(500).json(err);
@@ -121,8 +127,11 @@ router.post(`/check`, async (req, res) => {
         const {orgName} = req.body;
         const QUERY = `SELECT id FROM organisations WHERE name = ?;`;
         const VALUE = [orgName];
-        const {rowLength} = await client.execute(QUERY, VALUE);
-        return res.status(200).json({found: rowLength != 0});
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            const rowLength = rows.length;
+            return res.status(200).json({found: rowLength != 0});
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -178,8 +187,10 @@ router.post(`/resource-overview`, async (req, res) => {
         FROM employee WHERE id = ?;
         `;
         const VALUE = [id];
-        const {rows} = await client.execute(QUERY, VALUE);
-        return res.status(200).json(rows[0]||{});
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            return res.status(200).json(rows[0]||{});
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -194,7 +205,7 @@ router.put(`/hire`, async (req, res) => {
         WHERE organisation = ? AND email = ?;
         `;
         const VALUE = [orgName, email];
-        await client.execute(QUERY, VALUE);
+        client.execute(QUERY, VALUE);
         return res.status(200).json("Resource hired");
     } catch (err) {
         return res.status(500).json(err);
@@ -210,7 +221,7 @@ router.put(`/deny`, async (req, res) => {
         WHERE organisation = ? AND email = ?;
         `;
         const params = [orgName, email];
-        await client.batch([{query, params}], {prepare: true});
+        client.execute(query, params);
         return res.status(200).json("Resource denied");
     } catch (err) {
         return res.status(500).json(err);
@@ -226,7 +237,7 @@ router.put(`/accept-leave`, async (req, res) => {
         WHERE organisation = ? AND email = ?;
         `;
         const VALUE = [leaves, orgName, email];
-        await client.execute(QUERY, VALUE, {prepare: true});
+        client.execute(QUERY, VALUE);
         return res.status(200).json("Leave accepted");
     } catch (err) {
         return res.status(500).json(err);
@@ -285,8 +296,10 @@ router.post(`/get-id`, async (req, res) => {
       const {orgName} = req.body;
       const QUERY = `SELECT id FROM organisations WHERE name = ?;`;
       const VALUE = [orgName];
-      const {rows} = await client.execute(QUERY, VALUE);
-      return res.status(200).json(rows[0]);
+      client.execute(QUERY, VALUE, (err, rows) => {
+        if (err) throw err;
+        return res.status(200).json(rows[0]);
+      });
   } catch (err) {
       return res.status(500).json(err);
   }
