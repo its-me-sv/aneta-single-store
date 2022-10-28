@@ -2,7 +2,7 @@
 const jwt = require("jsonwebtoken");
 
 // custom
-const client = require("./astra-db.util");
+const client = require("./single-store.util");
 
 // endpoints that need not require token
 const whitelist = [
@@ -16,7 +16,8 @@ const whitelist = [
 ];
 
 const isUserLoggedIn = async userId => {
-    const { rowLength } = await client.execute(`SELECT id FROM tokens WHERE id = ?`, [userId]);
+    const result = client.execute(`SELECT id FROM tokens WHERE id = ?`, [userId]);
+    console.log(result);
     return rowLength > 0;
 };
 

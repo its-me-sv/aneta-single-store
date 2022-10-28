@@ -3,8 +3,13 @@ const router = require("express").Router();
 const bcrypt = require("bcrypt");
 
 // custom
-const client = require("../utils/astra-db.util");
-const { isUserLoggedIn, generateAccessToken, generateRefreshToken, removeUser } = require("../utils/jwt.util");
+const client = require("../utils/single-store.util");
+const { 
+    isUserLoggedIn, 
+    generateAccessToken, 
+    generateRefreshToken, 
+    removeUser
+} = require("../utils/jwt.util");
 
 // logging in organisation head
 router.post("/org-login", async (req, res) => {

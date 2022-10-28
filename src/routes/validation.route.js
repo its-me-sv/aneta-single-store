@@ -2,7 +2,7 @@
 const router = require("express").Router();
 
 // custom
-const client = require("../utils/astra-db.util");
+const client = require("../utils/single-store.util");
 
 // checking whether server is running
 router.get("/server", (req, res) => {
@@ -12,7 +12,7 @@ router.get("/server", (req, res) => {
 // checking whether server is connected to db
 router.get("/db", async (req, res) => {
     try {
-        if (client.connected)
+        if (client)
             return res.status(200).json("DB - Check SUCCESS");
         throw new Error("DB - Check FAILURE");
     } catch (err) {

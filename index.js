@@ -6,16 +6,16 @@ require("./src/utils/single-store.util");
 const { app, io, httpServer } = require('./src/utils/server.util');
 // const combineRoutes = require('./src/routes');
 // const combineMiddlewares = require('./src/utils/middleware.util');
-// const socketHandler = require('./src/utils/socket.util');
+const socketHandler = require('./src/utils/socket.util');
 
-// middlewares
+// //middlewares
 // combineMiddlewares(app);
 
-// routes
+// //routes
 // combineRoutes(app);
 
-// socket
-// socketHandler(io);
+// //socket
+socketHandler(io);
 
 // port declaration & server spin up
 const PORT = process.env.PORT || 5000;
