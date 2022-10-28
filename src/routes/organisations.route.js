@@ -142,37 +142,30 @@ router.post(`/employee`, async (req, res) => {
     try {
         const {orgName, page, keyword} = req.body;
         const {joined} = req.query;
-        let QUERY = `
-        SELECT id FROM employee 
-        WHERE organisation = ? AND joined = ?;`;
-        let VALUE = [orgName, joined === 'true'];
         if (keyword?.length > 0) {
-            let allResources = [];
             const VALUES = [orgName, joined === 'true', keyword];
             const QUERY1 = `
             SELECT id FROM employee WHERE organisation = ? 
-            AND joined = ? AND name = ?;`;
-            const {rows: r1} = await client.execute(QUERY1, VALUES);
-            allResources = allResources.concat(r1);
-            const QUERY2 = `
-            SELECT id FROM employee WHERE organisation = ? 
-            AND joined = ? AND email = ?;`;
-            const {rows: r2} = await client.execute(QUERY2, VALUES);
-            allResources = allResources.concat(r2);
-            const QUERY3 = `
-            SELECT id FROM employee WHERE organisation = ? 
-            AND joined = ? AND role = ?;`;
-            const {rows: r3} = await client.execute(QUERY3, VALUES);
-            allResources = allResources.concat(r3);
-            return res.status(200).json({ resource: allResources, pageState: null });
+            AND joined = ? AND ? in (name, email, role);`;
+            client.execute(QUERY1, VALUES, (err, resources) => {
+                if (err) throw err;
+                return res.status(200).json({ resource: resources, pageState: null });
+            });
+        } else {
+            let QUERY = `
+            SELECT id FROM employee 
+            WHERE organisation = ? AND joined = ?`;
+            let VALUE = [orgName, joined === 'true'];
+            if (page?.length > 0) {
+                QUERY += " AND id > ?";
+                VALUE.push(page);
+            }
+            QUERY += " ORDER BY id DESC LIMIT 7;"
+            client.execute(QUERY, VALUE, (err, rows) => {
+                if (err) throw err;
+                return res.status(200).json({ resource: rows, pageState: rows.slice(-1)[0].id });
+            });
         }
-        const queryOptions = {
-          prepare: true,
-          fetchSize: 7
-        };
-        if (page?.length > 0) queryOptions.pageState = page;
-        const {rows, pageState} = await client.execute(QUERY, VALUE, {...queryOptions});
-        return res.status(200).json({ resource: rows, pageState });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -261,30 +254,35 @@ router.post(`/comm-info`, async (req, res) => {
         FROM organisations WHERE id = ?;
         `;
         let VALUE = [id];
-        let {rows: orgs, rowLength} = await client.execute(QUERY, VALUE);
-        if (rowLength > 0) {
-            resBody.name = orgs[0].creator_name;
-            resBody.status = orgs[0].status;
-            resBody.email = orgs[0].email;
-            resBody.role = "Organisation Manager";
-            resBody.image = orgs[0].profile_picture;
-            return res.status(200).json(resBody);
-        }
-        // checking in employee
-        QUERY = `
-        SELECT name, status, email, profile_picture, role
-        FROM employee WHERE id = ?;
-        `;
-        VALUE = [id];
-        let {rows: emps} = await client.execute(QUERY, VALUE);
-        if (emps?.length > 0) {
-            resBody.name = emps[0].name;
-            resBody.status = emps[0].status;
-            resBody.email = emps[0].email;
-            resBody.role = emps[0].role;
-            resBody.image = emps[0].profile_picture;
-        }
-        return res.status(200).json(resBody);
+        client.execute(QUERY, VALUE, (err, orgs) => {
+            if (err) throw err;
+            if (rowLength > 0) {
+                resBody.name = orgs[0].creator_name;
+                resBody.status = orgs[0].status;
+                resBody.email = orgs[0].email;
+                resBody.role = "Organisation Manager";
+                resBody.image = orgs[0].profile_picture;
+                return res.status(200).json(resBody);
+            } else {
+                // checking in employee
+                QUERY = `
+                SELECT name, status, email, profile_picture, role
+                FROM employee WHERE id = ?;
+                `;
+                VALUE = [id];
+                client.execute(QUERY, VALUE, (err1, emps) => {
+                    if (err1) throw err1;
+                    if (emps?.length > 0) {
+                        resBody.name = emps[0].name;
+                        resBody.status = emps[0].status;
+                        resBody.email = emps[0].email;
+                        resBody.role = emps[0].role;
+                        resBody.image = emps[0].profile_picture;
+                    }
+                    return res.status(200).json(resBody);
+                });
+            }
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
