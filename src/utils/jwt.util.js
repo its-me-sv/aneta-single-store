@@ -16,9 +16,10 @@ const whitelist = [
 ];
 
 const isUserLoggedIn = async userId => {
-    const {_rows: rows} = client.execute(`SELECT id FROM tokens WHERE id = ?`, [userId]);
-    const rowLength = rows.length;
-    return rowLength > 0;
+    client.execute(`SELECT id FROM tokens WHERE id = ?`, [userId], (err, rows) => {
+        const rowLength = rows.length;
+        return rowLength > 0;
+    });
 };
 
 const loginUser = async (userId, token) => {
@@ -68,12 +69,13 @@ const verifyUser = async (req, res, next) => {
         const { id } = jwt.verify(token, process.env.JWT_SECRET);
         const QUERY = `SELECT tkn FROM tokens WHERE id = ?`;
         const VALUES = [id];
-        const { _rows: rows } = client.execute(QUERY, VALUES);
-        const rowLength = rows.length;
-        if (!isUserLoggedIn(id) || !rowLength || rows[0].tkn != token)
-            throw new Error("Not valid");
-        req.userId = id;
-        return next();
+        client.execute(QUERY, VALUES, (err, rows) => {
+            const rowLength = rows.length;
+            if (!isUserLoggedIn(id) || !rowLength || rows[0].tkn != token)
+                throw new Error("Not valid");
+            req.userId = id;
+            return next();
+        });
     } catch (err) {
         return res.status(400).json("You are NOT Authorized");
     }
