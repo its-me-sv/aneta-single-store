@@ -3,7 +3,7 @@ const router = require('express').Router();
 const bcrypt = require("bcrypt");
 
 // custom
-const client = require("../utils/astra-db.util");
+const client = require("../utils/single-store.util.js");
 
 // creating new employee
 router.post(`/create`, async (req, res) => {

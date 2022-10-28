@@ -1,16 +1,15 @@
 // packages
 const router = require('express').Router();
-const timeuuid = require('cassandra-driver').types.TimeUuid;
 
 // custom
-const client = require("../utils/astra-db.util");
+const client = require("../utils/single-store.util.js");
 
 // new message
 router.post(`/new`, async (req, res) => {
     try {
         const {sender, reciever, orgName, msg} = req.body;
         const chatId = [sender, reciever].sort().join('');
-        const msgId = timeuuid.now();
+        const msgId = new Date().toISOString();
         const QUERY = `
         INSERT INTO messages (organisation, chat_id, id, message, sender)
         VALUES (?, ?, now(), ?, ?);

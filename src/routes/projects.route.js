@@ -2,7 +2,7 @@
 const router = require('express').Router();
 
 // custom
-const client = require("../utils/astra-db.util");
+const client = require("../utils/single-store.util.js");
 
 // create new project
 router.post(`/create`, async (req, res) => {
