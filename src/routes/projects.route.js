@@ -14,15 +14,20 @@ router.post(`/create`, async (req, res) => {
         WHERE organisation = ? AND name = ?;
         `;
         let VALUE = [orgName, projName];
-        let {rowLength} = await client.execute(QUERY, VALUE);
-        if (rowLength > 0) return res.status(400).json("Name already used");
-        QUERY = `
-        INSERT INTO projects (organisation, name, description, id, status)
-        VALUES (?, ?, ?, now(), 1);
-        `;
-        VALUE = [orgName, projName, projDesc];
-        await client.execute(QUERY, VALUE);
-        return res.status(200).json("Project created successfully");
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            const rowLength = rows.length;
+            if (rowLength > 0) return res.status(400).json("Name already used");
+            QUERY = `
+            INSERT INTO projects (organisation, name, description, id, status)
+            VALUES (?, ?, ?, now(6), 1);
+            `;
+            VALUE = [orgName, projName, projDesc];
+            client.execute(QUERY, VALUE, (err1) => {
+                if (err1) throw err1;
+                return res.status(200).json("Project created successfully");
+            });
+        });
     } catch (err) {
         return res.status(500).json(err);
     }

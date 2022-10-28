@@ -24,7 +24,7 @@ router.post(`/create`, async (req, res) => {
         QUERY = `
           INSERT INTO organisations 
           (name, creator_name, email, id, password_hash, profile_picture, status)
-          VALUES (?, ?, ?, now(), ?, '', 0);
+          VALUES (?, ?, ?, now(6), ?, '', 0);
         `;
         VALUES = [orgName, creator, email, hashedPassword];
         await client.execute(QUERY, VALUES);

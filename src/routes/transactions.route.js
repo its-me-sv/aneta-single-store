@@ -20,7 +20,7 @@ router.post(`/new`, async (req, res) => {
         const amount = salary[role];
         const QUERY = `
         INSERT INTO transactions (id, organisation, recipient, amount)
-        VALUES (now(), ?, ?, ?);
+        VALUES (now(6), ?, ?, ?);
         `;
         const VALUE = [orgName, empEmail, amount];
         client.execute(QUERY, VALUE);

@@ -12,7 +12,7 @@ router.post(`/new`, async (req, res) => {
         const msgId = new Date().toISOString();
         const QUERY = `
         INSERT INTO messages (organisation, chat_id, id, message, sender)
-        VALUES (?, ?, now(), ?, ?);
+        VALUES (?, ?, now(6), ?, ?);
         `;
         const VALUE = [orgName, chatId, msg, sender];
         await client.execute(QUERY, VALUE);
