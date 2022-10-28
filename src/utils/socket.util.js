@@ -18,15 +18,21 @@ const unRegisterSocket = async (socketId) => {
     const QUERY = `SELECT id FROM sockets WHERE socket_id = ?;`;
     const VALUES = [socketId];
     try {
-        const { _rows: rows } = client.execute(QUERY, VALUES);
-        const rowLength = rows.length;
-        if (!rowLength) return;
-        const id = String(rows[0].id);
-        if (!id || !id.length) return;
-        const QUERY1 = `DELETE FROM sockets WHERE id = ?;`;
-        const VALUES1 = [id];
-        client.execute(QUERY1, VALUES1);
-        removeUser(id);
+        client.execute(QUERY, VALUES, (err, rows) => {
+            if (err) {
+                console.log(err);
+                return;
+            } else {
+                const rowLength = rows.length;
+                if (!rowLength) return;
+                const id = String(rows[0].id);
+                if (!id || !id.length) return;
+                const QUERY1 = `DELETE FROM sockets WHERE id = ?;`;
+                const VALUES1 = [id];
+                client.execute(QUERY1, VALUES1);
+                removeUser(id);
+            }
+        });
     } catch (err) {
         console.log(err);
     }
