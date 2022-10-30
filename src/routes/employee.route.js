@@ -16,8 +16,11 @@ router.post(`/create`, async (req, res) => {
         WHERE organisation = ? AND email = ?;
         `;
         let VALUES = [orgName, email];
-        const { rowLength } = await client.execute(QUERY, VALUES);
-        if (rowLength) return res.status(400).json("Email taken");
+        client.execute(QUERY, VALUES, (err, rows) => {
+            if (err) throw err;
+            const rowLength = rows.length;
+            if (rowLength) return res.status(400).json("Email taken");
+        });
 
         // hashing password
         const salt = await bcrypt.genSalt(+process.env.SALT);
@@ -30,7 +33,7 @@ router.post(`/create`, async (req, res) => {
         VALUES (?, ?, ?, ?, ?, now(6), false, 0, false, 0, '');
         `;
         VALUES = [orgName, name, email, role, hashedPassword];
-        await client.execute(QUERY, VALUES);
+        client.execute(QUERY, VALUES);
         return res.status(200).json("Account created successfully");
     } catch (err) {
         console.log(err);
@@ -47,9 +50,11 @@ router.post(`/info`, async (req, res) => {
         FROM employee WHERE id = ?;
         `;
         const VALUE = [id];
-        const {rows} = await client.execute(QUERY, VALUE);
-        if (!rows[0]) return res.status(400).json("Not found");
-        return res.status(200).json(rows[0]);
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            if (!rows[0]) return res.status(400).json("Not found");
+            return res.status(200).json(rows[0]);
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -61,9 +66,11 @@ router.post(`/leaves`, async (req, res) => {
         const {id} = req.body;
         const QUERY = `SELECT leaves FROM employee WHERE id = ?;`;
         const VALUE = [id];
-        const {rows} = await client.execute(QUERY, VALUE);
-        if (!rows[0]) return res.status(400).json("Not Found");
-        return res.status(200).json(rows[0]);
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            if (!rows[0]) return res.status(400).json("Not Found");
+            return res.status(200).json(rows[0]);
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -78,9 +85,11 @@ router.post(`/tiny-info`, async (req, res) => {
         FROM employee WHERE id = ?;
         `;
         const VALUE = [id];
-        const { rows } = await client.execute(QUERY, VALUE);
-        if (!rows[0]) return res.status(400).json("Not found");
-        return res.status(200).json(rows[0]);
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            if (!rows[0]) return res.status(400).json("Not found");
+            return res.status(200).json(rows[0]);
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -95,14 +104,14 @@ router.put(`/update`, async (req, res) => {
         WHERE organisation = ? AND email = ?;
         `;
         const VALUE = [name, imageUrl, orgName, email];
-        await client.execute(QUERY, VALUE);
+        client.execute(QUERY, VALUE);
         if (password?.length > 0) {
             const salt = await bcrypt.genSalt(+process.env.SALT);
             const hashedPassword = await bcrypt.hash(password, salt);
             const QUERY1 = `UPDATE employee SET password_hash = ? 
             WHERE organisation = ? AND email = ?;`;
             const VALUES1 = [hashedPassword, orgName, email];
-            await client.execute(QUERY1, VALUES1);
+            client.execute(QUERY1, VALUES1);
         }
         return res.status(200).json("OK");
     } catch (err) {
@@ -117,8 +126,10 @@ router.post(`/skills`, async (req, res) => {
         const {id} = req.body;
         const QUERY = `SELECT skills FROM employee WHERE id = ?;`;
         const VALUE = [id];
-        const {rows} = await client.execute(QUERY, VALUE);
-        return res.status(200).json(rows[0]||{});
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            return res.status(200).json(rows[0]||{});
+        });
     } catch (err) {
       return res.status(500).json(err);
     }
@@ -128,12 +139,22 @@ router.post(`/skills`, async (req, res) => {
 router.put(`/add-skill`, async (req, res) => {
     try {
         const {email, orgName, skill} = req.body;
-        const QUERY = `
-        UPDATE employee SET skills = skills + ?
-        WHERE organisation = ? AND email = ?;`;
-        const VALUE = [[skill], orgName, email];
-        await client.execute(QUERY, VALUE, {prepare: true});
-        return res.status(200).json("Skill added");
+        let QUERY = `
+        SELECT skills FROM employee
+        WHERE organisation = ? AND email = ?;
+        `;
+        let VALUE = [orgName, email];
+        client.execute(QUERY, VALUE, (err, empSkl) => {
+            if (err) throw err;
+            let skills = empSkl[0].skills;
+            skills = {skills: [...skills.skills, skill]}
+            QUERY = `
+            UPDATE employee SET skills = ?
+            WHERE organisation = ? AND email = ?;`;
+            VALUE = [skills, orgName, email];
+            client.execute(QUERY, VALUE);
+            return res.status(200).json("Skill added");
+        });
     } catch (err) {
         console.log(err);
         return res.status(500).json(err);
@@ -144,12 +165,22 @@ router.put(`/add-skill`, async (req, res) => {
 router.put(`/remove-skill`, async (req, res) => {
     try {
         const {email, orgName, skill} = req.body;
-        const QUERY = `
-        UPDATE employee SET skills = skills - ?
-        WHERE organisation = ? AND email = ?;`;
-        const VALUE = [[skill], orgName, email];
-        await client.execute(QUERY, VALUE, {prepare: true});
-        return res.status(200).json("Skill removed");
+        let QUERY = `
+        SELECT skills FROM employee
+        WHERE organisation = ? AND email = ?;
+        `;
+        let VALUE = [orgName, email];
+        client.execute(QUERY, VALUE, (err, empSkl) => {
+            if (err) throw err;
+            let skills = empSkl[0].skills;
+            skills = { skills: skills.skills.filter(v => v !== skill) }
+            QUERY = `
+            UPDATE employee SET skills = ?
+            WHERE organisation = ? AND email = ?;`;
+            VALUE = [skills, orgName, email];
+            client.execute(QUERY, VALUE);
+            return res.status(200).json("Skill removed");
+        });
     } catch (err) {
         console.log(err);
         return res.status(500).json(err);
@@ -162,8 +193,10 @@ router.post(`/projects`, async (req, res) => {
       const { id } = req.body;
       const QUERY = `SELECT projects FROM employee WHERE id = ?;`;
       const VALUE = [id];
-      const { rows } = await client.execute(QUERY, VALUE);
-      return res.status(200).json(rows[0] || {});
+      client.execute(QUERY, VALUE, (err, rows) => {
+        if (err) throw err;
+        return res.status(200).json(rows[0] || {});
+      });
     } catch (err) {
       return res.status(500).json(err);
     }
@@ -172,13 +205,23 @@ router.post(`/projects`, async (req, res) => {
 // add project
 router.put(`/add-project`, async (req, res) => {
     try {
-        const {id, orgName, project} = req.body;
-        const QUERY = `
-        UPDATE employee SET project = project + ?
-        WHERE organisation = ? IF id = ?;`;
-        const VALUE = [[project], orgName, id];
-        await client.execute(QUERY, VALUE, {prepare: true});
-        return res.status(200).json("Project added");
+        const {id, orgName, project: np} = req.body;
+        let QUERY = `
+        SELECT project FROM employee
+        WHERE organisation = ? IF id = ?;
+        `;
+        let VALUE = [orgName, id];
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            let {project} = rows[0];
+            project = {project: [...project.project, np]};
+            QUERY = `
+            UPDATE employee SET project = ?
+            WHERE organisation = ? IF id = ?;`;
+            VALUE = [project, orgName, id];
+            client.execute(QUERY, VALUE);
+            return res.status(200).json("Project added");
+        });
     } catch (err) {
         console.log(err);
         return res.status(500).json(err);
@@ -188,13 +231,23 @@ router.put(`/add-project`, async (req, res) => {
 // remove project
 router.put(`/remove-project`, async (req, res) => {
     try {
-        const { id, orgName, project } = req.body;
-        const QUERY = `
-        UPDATE employee SET project = project - ?
-        WHERE organisation = ? IF id = ?;`;
-        const VALUE = [[project], orgName, id];
-        await client.execute(QUERY, VALUE, { prepare: true });
-        return res.status(200).json("Project removed");
+        const { id, orgName, project: np } = req.body;
+        let QUERY = `
+        SELECT project FROM employee
+        WHERE organisation = ? IF id = ?;
+        `;
+        let VALUE = [orgName, id];
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            let { project } = rows[0];
+            project = { project: project.project.filter(val => val !== np) };
+            QUERY = `
+            UPDATE employee SET project = ?
+            WHERE organisation = ? IF id = ?;`;
+            VALUE = [project, orgName, id];
+            client.execute(QUERY, VALUE);
+            return res.status(200).json("Project removed");
+        });
     } catch (err) {
         console.log(err);
         return res.status(500).json(err);
@@ -210,8 +263,10 @@ router.post(`/stat-req`, async (req, res) => {
         WHERE id = ?;
         `;
         const VALUE = [id];
-        const {rows} = await client.execute(QUERY, VALUE);
-        return res.status(200).json(rows[0]||{});
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            return res.status(200).json(rows[0]||{});
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -226,7 +281,7 @@ router.put(`/set-status`, async (req, res) => {
         WHERE organisation = ? AND email = ?;
         `;
         const VALUE = [status, orgName, email];
-        await client.execute(QUERY, VALUE, {prepare: true});
+        client.execute(QUERY, VALUE);
         return res.status(200).json("Status updated");
     } catch (err) {
         return res.status(500).json(err);
@@ -239,8 +294,10 @@ router.post(`/joined`, async (req, res) => {
         const {id} = req.body;
         const QUERY = `SELECT joined FROM employee WHERE id = ?;`;
         const VALUE = [id];
-        const {rows} = await client.execute(QUERY, VALUE);
-        return res.status(200).json(rows[0]||{});
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            return res.status(200).json(rows[0]||{});
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -255,8 +312,10 @@ router.post(`/for-resource`, async (req, res) => {
         WHERE id = ?;
         `;
         const VALUE = [id];
-        const {rows} = await client.execute(QUERY, VALUE);
-        return res.status(200).json(rows[0]||{});
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            return res.status(200).json(rows[0]||{});
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
@@ -271,7 +330,7 @@ router.put(`/leave-request`, async (req, res) => {
         WHERE organisation = ? AND email = ?;
         `;
         const VALUE = [orgName, email];
-        await client.execute(QUERY, VALUE);
+        client.execute(QUERY, VALUE);
         return res.status(200).json("Leave requested");
     } catch (err) {
         return res.status(500).json(err);
@@ -284,23 +343,27 @@ router.post(`/stats`, async (req, res) => {
         const {orgName} = req.body;
         let roles = ['Developer', 'Tester', 'Support', 'Project Manager'];
         let resBody = {};
-        let QUERY, VALUE, result;
+        let QUERY, VALUE;
         for (let role of roles) {
             QUERY = `
             SELECT count(id) AS count FROM employee 
             WHERE organisation = ? AND role = ? AND joined = true;
             `;
             VALUE = [orgName, role];
-            result = (await client.execute(QUERY, VALUE)).rows[0].count;
-            resBody[role] = result;
+            client.execute(QUERY, VALUE, (err, rows) => {
+                if (err) throw err;
+                resBody[role] = rows[0].count;
+            });
         }
         QUERY = `
         SELECT count(id) AS count FROM employee 
         WHERE organisation = ? AND joined = false;
         `;
         VALUE = [orgName];
-        result = (await client.execute(QUERY, VALUE)).rows[0].count;
-        resBody["Candidates"] = result;
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            resBody["Candidates"] = rows[0].count;
+        });
         return res.status(200).json(resBody);
     } catch (err) {
         return res.status(500).json(err);
