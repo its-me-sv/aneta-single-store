@@ -15,7 +15,7 @@ router.post(`/new`, async (req, res) => {
         VALUES (?, ?, now(6), ?, ?);
         `;
         const VALUE = [orgName, chatId, msg, sender];
-        await client.execute(QUERY, VALUE);
+        client.execute(QUERY, VALUE);
         const resBody = {id: msgId, message: msg, sender};
         return res.status(200).json(resBody);
     } catch (err) {
@@ -28,17 +28,18 @@ router.post(`/fetch`, async (req, res) => {
     try {
         const {sender, reciever, orgName, page} = req.body;
         const chatId = [sender, reciever].sort().join('');
-        const QUERY = `
+        let QUERY = `
         SELECT id, message, sender FROM messages 
-        WHERE organisation = ? AND chat_id = ?;`;
-        const VALUE = [orgName, chatId];
-        const queryOptions = {
-          prepare: true,
-          fetchSize: 10
-        };
-        if (page?.length > 0) queryOptions.pageState = page;
-        const {rows, pageState} = await client.execute(QUERY, VALUE, {...queryOptions});
-        return res.status(200).json({messages: rows.reverse(), pageState});
+        WHERE organisation = ? AND chat_id = ?`;
+        let VALUE = [orgName, chatId];
+        if (page?.length > 0) {
+            QUERY += ` AND id > ?`;
+            VALUE.push(page);
+        }
+        client.execute(QUERY, VALUE, (err, rows) => {
+            if (err) throw err;
+            return res.status(200).json({ messages: rows.reverse(), pageState: rows.slice(-1)[0].id });
+        });
     } catch (err) {
         return res.status(500).json(err);
     }
