@@ -22,27 +22,25 @@ router.post("/org-login", async (req, res) => {
         `;
         const VALUES1 = [orgName];
 
-        const result1 = client.execute(QUERY1, VALUES1);
-        if (result1._rows.length < 1)
-            return res.status(400).json("Account not found");
-
-        const user = result1._rows[0];
-        const isValid = await bcrypt.compare(password, user.password_hash);
-
-        if (!isValid)
-            return res.status(400).json("Invalid login credentials");
-        if (await isUserLoggedIn(user.id))
-            return res.status(400).json("Already logged in");
-
-        const QUERY = `UPDATE organisations SET status = ? WHERE name = ?;`;
-        const VALUES = [2, orgName];
-        client.execute(QUERY, VALUES, {prepare: true});
-
-        const sessionToken = await generateAccessToken(user.id);
-        return res.status(200).json({
-            id: user.id,
-            token: sessionToken,
-            orgName: user.name
+        client.execute(QUERY1, VALUES1, async (err, rows) => {
+            if (err) throw err;
+            if (rows.length < 1)
+                return res.status(400).json("Account not found");
+            const user = rows[0];
+            const isValid = await bcrypt.compare(password, user.password_hash);
+            if (!isValid)
+                return res.status(400).json("Invalid login credentials");
+            if (await isUserLoggedIn(user.id))
+                return res.status(400).json("Already logged in");
+            const QUERY = `UPDATE organisations SET status = ? WHERE name = ?;`;
+            const VALUES = [2, orgName];
+            client.execute(QUERY, VALUES);
+            const sessionToken = await generateAccessToken(user.id);
+            return res.status(200).json({
+                id: user.id,
+                token: sessionToken,
+                orgName: user.name
+            });
         });
     } catch (err) {
         return res.status(500).json(err);
@@ -60,30 +58,29 @@ router.post("/emp-login", async (req, res) => {
         `;
         let VALUES = [orgName, email];
 
-        const result1 = client.execute(QUERY, VALUES);
-        if (result1._rows.length < 1)
-            return res.status(400).json("Account not found");
-
-        const user = result1._rows[0];
-        const isValid = await bcrypt.compare(password, user.password_hash);
-
-        if (!isValid)
-            return res.status(400).json("Invalid login credentials");
-        if (await isUserLoggedIn(user.id))
-            return res.status(400).json("Already logged in");
-
-        QUERY = `
-        UPDATE employee SET status = ? 
-        WHERE organisation = ? AND email = ?;`;
-        VALUES = [2, orgName, email];
-        client.execute(QUERY, VALUES, { prepare: true });
-
-        const sessionToken = await generateAccessToken(user.id);
-        return res.status(200).json({
-            id: user.id,
-            token: sessionToken,
-            orgName,
-            email
+        client.execute(QUERY, VALUES, async (err, rows) => {
+            if (err) throw err;
+            if (rows.length < 1)
+                return res.status(400).json("Account not found");
+            const user = rows[0];
+            const isValid = await bcrypt.compare(password, user.password_hash);
+            if (!isValid)
+                return res.status(400).json("Invalid login credentials");
+            if (await isUserLoggedIn(user.id))
+                return res.status(400).json("Already logged in");
+            QUERY = `
+            UPDATE employee SET status = ? 
+            WHERE organisation = ? AND email = ?;`;
+            VALUES = [2, orgName, email];
+            client.execute(QUERY, VALUES);
+    
+            const sessionToken = await generateAccessToken(user.id);
+            return res.status(200).json({
+                id: user.id,
+                token: sessionToken,
+                orgName,
+                email
+            });
         });
     } catch (err) {
         console.log(err);
